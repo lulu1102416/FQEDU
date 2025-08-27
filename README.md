@@ -1,6 +1,5 @@
 # FQEDU
 
-<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
@@ -22,7 +21,7 @@
     .btn[disabled]{ opacity:.6; cursor:not-allowed; }
     .actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
     .hidden { display:none; }
-    .qbox { padding:14px; border:1px solid #eef0f4; background:#fafbff; border-radius:10px; margin-top:8px; }
+    .qbox { padding:14px; border:1px solid #eef0f4; background:#fafbff; border-radius:10px; margin-top:8px; white-space: pre-wrap; }
     .grid-5 { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap:12px; margin-top:12px; }
     .radio-group { display:flex; gap:8px; flex-wrap:wrap; }
     .chip { border:1px solid #d1d5db; background:#fff; border-radius:999px; padding:8px 14px; cursor:pointer; user-select:none; }
@@ -90,7 +89,7 @@
 </div>
 
 <script>
-  // 換成你部署的 Apps Script Web App URL
+  // 後端 Apps Script Web App URL
   const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyHs4XuTF58MIsE7ZTkioZK0UBaDJfToXFojaI_i117qIOwSdAuIhYVik49kIOfFGji/exec';
   const MAX_GROUP = 100, MAX_QNO = 52;
 
@@ -103,10 +102,12 @@
     container.innerHTML='';
     opts.forEach(o=>{
       const chip=document.createElement('label');
-      chip.className='chip'; chip.innerHTML=`<input type="radio" name="${name}" value="${o.v}"><span>${o.t}</span>`;
+      chip.className='chip';
+      chip.innerHTML=`<input type="radio" name="${name}" value="${o.v}"><span>${o.t}</span>`;
       chip.addEventListener('click',()=>{ 
         [...container.querySelectorAll('.chip')].forEach(c=>c.classList.remove('active'));
-        chip.classList.add('active'); chip.querySelector('input').checked=true;
+        chip.classList.add('active');
+        chip.querySelector('input').checked=true;
       });
       container.appendChild(chip);
     });
@@ -114,7 +115,7 @@
   const getChip = c => (c.querySelector('input:checked')||{}).value||'';
   const clearChips = c => { c.querySelectorAll('input').forEach(i=>i.checked=false); c.querySelectorAll('.chip').forEach(ch=>ch.classList.remove('active')); };
 
-  // 初始化選項
+  // 初始化選單與選項
   (function init(){
     const sel=$('group');
     for(let i=1;i<=MAX_GROUP;i++){
@@ -133,27 +134,30 @@
     return await res.json();
   }
 
+  // 送出並顯示題目
   $('btnFetch').addEventListener('click', async ()=>{
     toast('msg1','');
-    let group=$('group').value;
-    let qno=Number(($('qno').value||'').trim());
+    const group=$('group').value;
+    const qnoN=Number(($('qno').value||'').trim());
     if(!group) return toast('msg1','請先選擇組別。',false);
-    if(!qno||qno<1||qno>MAX_QNO) return toast('msg1','題號必須 1–52。',false);
+    if(!qnoN || qnoN<1 || qnoN>MAX_QNO) return toast('msg1','題號必須 1–52。',false);
 
     try{
-      const data=await postJSON(GAS_ENDPOINT,{action:'requestQuestion',payload:{group,qno}});
+      const data=await postJSON(GAS_ENDPOINT,{action:'requestQuestion',payload:{group,qno:qnoN}});
       if(!data.ok) throw new Error(data.message||'取得題目失敗');
-      $('qbox').textContent=data.question?.text||`第 ${qno} 題`;
-      $('badgeInfo').textContent=`第 ${group} 組｜第 ${qno} 題`;
-      window.__ctx={group:String(group),qno:String(qno)};
+      $('qbox').textContent=data.question?.text||`第 ${qnoN} 題`;
+      $('badgeInfo').textContent=`第 ${group} 組｜第 ${qnoN} 題`;
+      window.__ctx={group:String(group),qno:String(qnoN)};
       setHidden('step1',true); setHidden('step2',false);
       ['optStock','optBond','optFx','optCom','optRe'].forEach(id=>clearChips($(id)));
     }catch(err){ toast('msg1',err.message||'連線失敗',false); }
   });
 
+  // 清除/返回
   $('btnReset1').addEventListener('click',()=>{ $('group').value=''; $('qno').value=''; toast('msg1',''); });
   $('btnBack').addEventListener('click',()=>{ setHidden('step2',true); setHidden('step1',false); toast('msg2',''); });
 
+  // 送出作答
   $('btnSubmit').addEventListener('click', async ()=>{
     toast('msg2','');
     const stock=getChip($('optStock')), bond=getChip($('optBond')), fx=getChip($('optFx')), com=getChip($('optCom')), re=getChip($('optRe'));
@@ -170,3 +174,4 @@
 </script>
 </body>
 </html>
+
