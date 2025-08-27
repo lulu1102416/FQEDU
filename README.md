@@ -103,7 +103,7 @@
 
 <script>
   // TODO：換成你部署出的 Apps Script Web App EXEC URL
-  const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwQ51qgWZ6zTSgHbNgVJOe-H7JXEdTtbadQONuTY0xJOs5b5BmoSmlqd3EBfruaJl5V/exec';
+  const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw31ed40WGXVoTrHhg5-YbqAYqBrMxr9a8CjSZiH8fI0CRCd79ODfg0av0NQF54J4QT/exec';
   const MAX_GROUP = 100;
 
   const $ = (id)=>document.getElementById(id);
