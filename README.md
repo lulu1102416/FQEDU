@@ -1,229 +1,190 @@
 # FQEDU
 
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>本週挑戰｜作答系統</title>
-  <style>
-    :root { --radius: 14px; --shadow: 0 10px 30px rgba(0,0,0,.08); }
-    body { margin:0; padding:32px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans TC","Microsoft JhengHei",sans-serif; background:#f6f7fb; color:#222; }
-    .wrap { max-width: 960px; margin: 0 auto; }
-    .card { background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; }
-    h1 { margin:0 0 8px; font-size:28px; }
-    .sub { color:#667085; margin:0 0 20px; }
-    label { display:block; font-weight:600; margin:10px 0 6px; }
-    select, input, textarea { width:100%; padding:12px 14px; border:1px solid #e5e7eb; border-radius:10px; background:#fff; font-size:16px; outline:none; }
-    .row { display:grid; grid-template-columns: repeat(2,minmax(240px,1fr)); gap:12px; }
-    .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:12px 16px; border:0; border-radius:10px; font-weight:700; cursor:pointer; }
-    .btn.primary { background:#111827; color:#fff; }
-    .btn.secondary { background:#eef2f7; color:#111827; }
-    .btn[disabled]{ opacity:.6; cursor:not-allowed; }
-    .actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
-    .hidden { display:none; }
-    .qbox { padding:14px; border:1px solid #eef0f4; background:#fafbff; border-radius:10px; }
-    .grid-5 { display:grid; grid-template-columns: repeat(5, 1fr); gap:12px; }
-    .radio-group { display:flex; gap:8px; flex-wrap:wrap; }
-    .chip { border:1px solid #d1d5db; background:#fff; border-radius:999px; padding:8px 14px; cursor:pointer; user-select:none; }
-    .chip input { display:none; }
-    .chip.active { border-color:#111827; box-shadow: inset 0 0 0 2px #111827; }
-    .note { font-size:13px; color:#6b7280; margin-top:10px; }
-    .alert { margin-top:10px; padding:12px 14px; border-radius:10px; }
-    .alert.ok { background:#effaf1; border:1px solid #b7ebc6; color:#166534; }
-    .alert.err { background:#fff1f0; border:1px solid #ffcdc7; color:#a8071a; }
-    .badge { display:inline-block; padding:4px 10px; border-radius:999px; background:#eef2ff; color:#334155; font-weight:600; font-size:12px; }
-    @media (max-width: 900px){ .grid-5{ grid-template-columns: repeat(2, 1fr);} }
-  </style>
-</head>
-<body>
-<div class="wrap">
-  <!-- Step 1 -->
-  <section id="step1" class="card">
-    <h1>本週挑戰</h1>
-    <p class="sub">請先選擇 <b>組別</b> 與輸入 <b>第幾題</b>，送出後才會顯示題目與作答區。</p>
+/** ========= 基本設定 ========= **/
+const SPREADSHEET_ID = '1SPyCYVfxBrzOnB8RRtK7VOmZI8IXtr89b0feTf9Sd-I'; // 你的活頁簿 ID
+const SHEET_NAME_ANS = 'AnswerKey';  // 題庫＋正解（後端專用）
+const SHEET_NAME_RES = 'Responses';  // 學生作答
+const SHEET_NAME_SCO = 'Scores';     // 批改分數（排行榜來源）
 
-    <div class="row">
-      <div>
-        <label for="group">請填組別</label>
-        <select id="group" required>
-          <option value="" selected disabled>— 請選擇組別 —</option>
-        </select>
-      </div>
-      <div>
-        <label for="qno">本週挑戰｜請輸入第幾題（1–52）</label>
-        <input id="qno" type="number" min="1" max="52" step="1" placeholder="例如：3" required />
-      </div>
-    </div>
+/** 回答表頭（已擴充成五市場 + 總分） */
+const RES_HEADERS = ['Timestamp','Group','QNO','Story','STOCK','BOND','FX','COM','RE','Score'];
+const SCO_HEADERS = ['Timestamp','Group','QNO','Score'];
 
-    <div class="actions">
-      <button id="btnFetch" class="btn primary">送出並顯示題目</button>
-      <button id="btnReset1" class="btn secondary" type="button">清除</button>
-    </div>
-    <div id="msg1"></div>
-  </section>
+/** ========= 小工具 ========= **/
+function jsonOutput(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+function openSS_() { return SpreadsheetApp.openById(SPREADSHEET_ID); }
 
-  <!-- Step 2 -->
-  <section id="step2" class="card hidden" style="margin-top:18px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-      <span class="badge" id="badgeInfo">組別 − 題號</span>
-    </div>
+/** 讀表工具（強韌版）
+ * - 自動正規化表頭：trim、轉大寫
+ * - 支援同義欄位（QNO / 題號、QUESTIONTEXT / 題目 / 題幹）
+ * - QNO 比對同時支援「字串」與「數字」相等（1 == "1"）
+ */
+const HEADER_ALIASES = {
+  QNO: ['QNO', '題號', 'questionno', 'q_no', 'no'],
+  QUESTIONTEXT: ['QUESTIONTEXT', '題目', '題幹', 'question', 'question_text'],
+  STOCK: ['STOCK', '股市'],
+  BOND:  ['BOND', '債市'],
+  FX:    ['FX', '外匯', 'DXY'],
+  COM:   ['COM', '商品', 'COMMODITY'],
+  RE:    ['RE', '房地產', 'REAL ESTATE', 'REAL_ESTATE'],
+};
 
-    <label>題目內容</label>
-    <div id="qbox" class="qbox" aria-live="polite">（載入中…）</div>
+function normKey_(k) { return String(k || '').trim().toUpperCase(); }
 
-    <!-- 五市場 ± 選擇 -->
-    <div class="grid-5" style="margin-top:12px">
-      <div>
-        <label>股市</label>
-        <div id="optStock" class="radio-group" role="radiogroup" aria-label="股市"></div>
-      </div>
-      <div>
-        <label>債市</label>
-        <div id="optBond" class="radio-group" role="radiogroup" aria-label="債市"></div>
-      </div>
-      <div>
-        <label>外匯</label>
-        <div id="optFx" class="radio-group" role="radiogroup" aria-label="外匯"></div>
-      </div>
-      <div>
-        <label>商品</label>
-        <div id="optCom" class="radio-group" role="radiogroup" aria-label="商品"></div>
-      </div>
-      <div>
-        <label>房地產</label>
-        <div id="optRe" class="radio-group" role="radiogroup" aria-label="房地產"></div>
-      </div>
-    </div>
-
-    <div class="actions">
-      <button id="btnSubmit" class="btn primary">送出作答</button>
-      <button id="btnBack" class="btn secondary" type="button">返回上一步</button>
-    </div>
-    <div id="msg2"></div>
-
-    <p class="note">系統於 <b>後端</b> 批改並記錄分數；前台不顯示正解與分數。</p>
-  </section>
-</div>
-
-<script>
-  /** ====== 設定 ====== */
-  const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyHs4XuTF58MIsE7ZTkioZK0UBaDJfToXFojaI_i117qIOwSdAuIhYVik49kIOfFGji/exec';
-  const MAX_GROUP = 100, MAX_QNO = 52;
-
-  /** ====== 小工具 ====== */
-  const $ = id => document.getElementById(id);
-  const setHidden = (id, b)=> $(id).classList.toggle('hidden', b);
-  function toast(id, text, ok=true){ $(id).innerHTML = text ? `<div class="alert ${ok?'ok':'err'}">${text}</div>` : ''; }
-  function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
-  function buildChips(container, name){
-    const opts=[{v:'+',t:'正面(＋)'},{v:'-',t:'負面(－)'}];
-    container.innerHTML='';
-    opts.forEach(o=>{
-      const chip=document.createElement('label');
-      chip.className='chip'; chip.tabIndex=0;
-      chip.innerHTML=`<input type="radio" name="${name}" value="${o.v}"><span>${o.t}</span>`;
-      function activate(){
-        [...container.querySelectorAll('.chip')].forEach(c=>c.classList.remove('active'));
-        chip.classList.add('active');
-        chip.querySelector('input').checked=true;
-      }
-      chip.addEventListener('click', activate);
-      chip.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); activate(); }});
-      container.appendChild(chip);
-    });
-  }
-  const getChip = c => (c.querySelector('input:checked') || {}).value || '';
-  const clearChips = c => { c.querySelectorAll('input').forEach(i=>i.checked=false); c.querySelectorAll('.chip').forEach(ch=>ch.classList.remove('active')); };
-
-  // 初始化 group 選單 + 五市場 chips
-  (function init(){
-    const sel=$('group');
-    for(let i=1;i<=MAX_GROUP;i++){
-      const o=document.createElement('option');
-      o.value=String(i); o.textContent=`第 ${i} 組`; sel.appendChild(o);
+/** 將實際表頭映射成標準鍵名 */
+function buildHeaderMap_(headers) {
+  const normHeaders = headers.map(normKey_);
+  const map = {}; // { canonicalKey: index }
+  for (const [canon, aliases] of Object.entries(HEADER_ALIASES)) {
+    let idx = -1;
+    for (const a of aliases) {
+      const i = normHeaders.indexOf(a);
+      if (i !== -1) { idx = i; break; }
     }
-    buildChips($('optStock'),'stock');
-    buildChips($('optBond'),'bond');
-    buildChips($('optFx'),'fx');
-    buildChips($('optCom'),'com');
-    buildChips($('optRe'),'re');
-  })();
-
-  // 10 秒逾時的 fetch(JSON)
-  async function postJSON(url, payload){
-    const ctrl = new AbortController();
-    const timer = setTimeout(()=>ctrl.abort(), 10000);
-    try{
-      const res = await fetch(url, { method:'POST', body: JSON.stringify(payload), signal: ctrl.signal });
-      return await res.json();
-    } finally { clearTimeout(timer); }
+    map[canon] = idx; // 若為 -1 代表缺欄
   }
+  return map;
+}
 
-  // Step1：送出並顯示題目
-  $('btnFetch').addEventListener('click', fetchQuestion);
-  $('btnReset1').addEventListener('click', ()=>{ $('group').value=''; $('qno').value=''; toast('msg1',''); });
+/** 讀取整張表，回傳物件陣列（鍵名為 canonical key） */
+function readTableCanon_(sh) {
+  const v = sh.getDataRange().getValues();
+  if (v.length < 2) return { rows: [], headerMap: {} };
 
-  async function fetchQuestion(){
-    toast('msg1','');
-    let group=$('group').value;
-    let qno = Number(($('qno').value||'').trim());
-    if(!group) return toast('msg1','請先選擇組別。',false);
-    if(!qno)   return toast('msg1','請輸入題號。',false);
-    qno = clamp(qno, 1, MAX_QNO); $('qno').value = qno;
+  const headers = v[0];
+  const headerMap = buildHeaderMap_(headers);
 
-    $('btnFetch').disabled=true; $('btnFetch').textContent='載入題目中…';
-    try{
-      const data = await postJSON(GAS_ENDPOINT, { action:'requestQuestion', payload:{ group, qno }});
-      if(!data.ok) throw new Error(data.message||'取得題目失敗');
-      $('qbox').textContent = data.question?.text || `第 ${qno} 題`;
-      $('badgeInfo').textContent = `第 ${group} 組｜第 ${qno} 題`;
-
-      // 狀態
-      window.__ctx = { group:String(group), qno:String(qno) };
-
-      // 切換畫面
-      setHidden('step1',true); setHidden('step2',false);
-      [ 'optStock','optBond','optFx','optCom','optRe' ].forEach(id=>clearChips($(id)));
-    }catch(err){
-      toast('msg1', (err.name==='AbortError' ? '連線逾時，請再試一次。' : (err.message||'連線失敗')), false);
-    }finally{
-      $('btnFetch').disabled=false; $('btnFetch').textContent='送出並顯示題目';
+  const rows = v.slice(1).map(row => {
+    const obj = {};
+    for (const canon of Object.keys(HEADER_ALIASES)) {
+      const idx = headerMap[canon];
+      obj[canon] = (idx >= 0 ? row[idx] : '');
     }
-  }
-
-  // Step2：返回
-  $('btnBack').addEventListener('click', ()=>{
-    setHidden('step2',true); setHidden('step1',false); toast('msg2','');
+    return obj;
   });
+  return { rows, headerMap };
+}
 
-  // Step2：送出作答（五市場）
-  $('btnSubmit').addEventListener('click', submitAnswer);
+/** 以 QNO 查找（容忍數字/字串差異） */
+function findByQno_(rows, qno) {
+  const wantStr = String(qno).trim();
+  const wantNum = Number(wantStr);
+  return rows.find(r => {
+    const v = r.QNO;
+    // 同時檢查字串相等與數字相等
+    if (String(v).trim() === wantStr) return true;
+    const n = Number(v);
+    return Number.isFinite(n) && Number.isFinite(wantNum) && n === wantNum;
+  });
+}
 
-  async function submitAnswer(){
-    toast('msg2','');
-    const stock=getChip($('optStock'));
-    const bond =getChip($('optBond'));
-    const fx   =getChip($('optFx'));
-    const com  =getChip($('optCom'));
-    const re   =getChip($('optRe'));
-    if(!stock || !bond || !fx || !com || !re){
-      return toast('msg2','請完成五個市場的 ± 選擇。',false);
-    }
+/** ========= Web App 入口 ========= **/
+// GET：健康檢查；若帶 action=scores 則輸出排行榜 JSON
+function doGet(e) {
+  const action = e && e.parameter ? String(e.parameter.action || '').toLowerCase() : '';
 
-    $('btnSubmit').disabled=true; $('btnSubmit').textContent='送出中…';
-    try{
-      const {group,qno} = window.__ctx || {};
-      const payload = { group,qno,stock,bond,fx,com,re }; // ← 五市場
-      const data = await postJSON(GAS_ENDPOINT, { action:'submitAnswer', payload });
-      if(!data.ok) throw new Error(data.message||'送出失敗');
-      toast('msg2','已送出！感謝作答。',true);
-    }catch(err){
-      toast('msg2', (err.name==='AbortError' ? '連線逾時，請再試一次。' : (err.message||'連線失敗')), false);
-    }finally{
-      $('btnSubmit').disabled=false; $('btnSubmit').textContent='送出作答';
+  if (action === 'scores') {
+    try {
+      const rows = buildScoresRows_(); // ➜ [{ group, score }]
+      return jsonOutput({ ok: true, rows });
+    } catch (err) {
+      return jsonOutput({ ok: false, error: String(err && err.message ? err.message : err) });
     }
   }
-</script>
-</body>
-</html>
+
+  // 默認健康檢查
+  return ContentService.createTextOutput('OK').setMimeType(ContentService.MimeType.TEXT);
+}
+
+// POST：requestQuestion / submitAnswer
+// ⚠️ 不要在前端手動加 Content-Type，避免瀏覽器送 OPTIONS 預檢
+function doPost(e) {
+  const out = ContentService.createTextOutput().setMimeType(ContentService.MimeType.JSON);
+  try {
+    const data = JSON.parse(e.postData.contents || '{}');
+    const action = data.action;
+    const p = data.payload || {};
+    let result;
+
+    if (action === 'requestQuestion') {
+      result = handleRequestQuestion_(p);
+    } else if (action === 'submitAnswer') {
+      result = handleSubmitAnswer_(p);
+    } else {
+      throw new Error('Unknown action');
+    }
+
+    out.setContent(JSON.stringify({ ok: true, ...result }));
+  } catch (err) {
+    out.setContent(JSON.stringify({ ok: false, message: String(err) }));
+  }
+  return out;
+}
+
+/** ========= 業務邏輯 ========= **/
+function handleRequestQuestion_({ group, qno }) {
+  if (!group) throw new Error('缺少 group');
+  if (!qno)   throw new Error('缺少 qno');
+
+  const ss = openSS_();
+  const sh = ss.getSheetByName(SHEET_NAME_ANS);
+  if (!sh) throw new Error(`找不到工作表 ${SHEET_NAME_ANS}`);
+
+  const { rows } = readTableCanon_(sh);
+  const row = findByQno_(rows, qno);
+  if (!row) throw new Error(`AnswerKey 中找不到題號 ${qno}`);
+
+  // 題幹：有 QuestionText 用 QuestionText，否則 fallback
+  const text = String(row.QUESTIONTEXT || '').trim() || `第 ${qno} 題`;
+
+  return {
+    question: { qno: String(qno), text }
+  };
+}
+
+/** 五市場批改版（STOCK / BOND / FX / COM / RE 都要 + 或 -） */
+function handleSubmitAnswer_({ group, qno, stock, bond, fx, com, re, story }) {
+  if (!group || !qno) throw new Error('缺少 group 或 qno');
+  if (!stock || !bond || !fx || !com || !re) throw new Error('請完成五個市場的 ± 選擇');
+
+  const ss = openSS_();
+
+  // 讀取正解
+  const keySh = ss.getSheetByName(SHEET_NAME_ANS);
+  if (!keySh) throw new Error(`找不到工作表 ${SHEET_NAME_ANS}`);
+
+  const { rows } = readTableCanon_(keySh);
+  const key = findByQno_(rows, qno);
+  if (!key) throw new Error(`AnswerKey 中找不到題號 ${qno}`);
+
+  function norm(v){ return String(v || '').trim().toUpperCase(); }
+  const ans = {
+    STOCK: norm(key.STOCK),
+    BOND:  norm(key.BOND),
+    FX:    norm(key.FX),
+    COM:   norm(key.COM),
+    RE:    norm(key.RE),
+  };
+  const user = {
+    STOCK: norm(stock),
+    BOND:  norm(bond),
+    FX:    norm(fx),
+    COM:   norm(com),
+    RE:    norm(re),
+  };
+
+  let score = 0;
+  Object.keys(ans).forEach(k => { if (ans[k] && user[k] && ans[k] === user[k]) score += 1; });
+
+  // Responses：寫入五市場 + 總分
+  const resSh = ensureSheet_(ss, SHEET_NAME_RES, RES_HEADERS);
+  resSh.appendRow([
+    new Date(), String(group), String(qno), String(story || ''),
+    user.STOCK, user.BOND, user.FX, user.COM, user.RE, score
+  ]);
+
+  // Score
+
