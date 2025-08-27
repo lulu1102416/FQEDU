@@ -1,5 +1,5 @@
 # FQEDU
-
+<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
@@ -89,8 +89,8 @@
 </div>
 
 <script>
-  // 後端 Apps Script Web App URL
-  const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyHs4XuTF58MIsE7ZTkioZK0UBaDJfToXFojaI_i117qIOwSdAuIhYVik49kIOfFGji/exec';
+  // 後端 Apps Script Web App URL（你的最新部署）
+  const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzBXokR6B_zaAg7v07QrnLygSO-QN3EI91cp_P90DPMclw2DDx6QTczAEEUd7QpBzuF/exec';
   const MAX_GROUP = 100, MAX_QNO = 52;
 
   const $ = id => document.getElementById(id);
@@ -130,6 +130,7 @@
   })();
 
   async function postJSON(url,payload){
+    // 不帶 Content-Type，避免瀏覽器預檢
     const res = await fetch(url,{method:'POST',body:JSON.stringify(payload)});
     return await res.json();
   }
@@ -174,4 +175,3 @@
 </script>
 </body>
 </html>
-
