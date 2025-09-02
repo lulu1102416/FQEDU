@@ -90,7 +90,7 @@
 
 <script>
   // 後端 Apps Script Web App URL（你的最新部署）
-  const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzBXokR6B_zaAg7v07QrnLygSO-QN3EI91cp_P90DPMclw2DDx6QTczAEEUd7QpBzuF/exec';
+  const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwChoe5ltkSEzuUX76tjy_lzZrOeuZN85Qk90J6s2sgT8QsoDtzxLzwt3okzTgcI87C/exec';
   const MAX_GROUP = 100, MAX_QNO = 52;
 
   const $ = id => document.getElementById(id);
