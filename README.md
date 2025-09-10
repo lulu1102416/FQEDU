@@ -74,8 +74,8 @@
     <div class="grid-5">
       <div><label>股市</label><div id="optStock" class="radio-group"></div></div>
       <div><label>債市</label><div id="optBond" class="radio-group"></div></div>
-      <div><label>外匯</label><div id="optFx" class="radio-group"></div></div>
-      <div><label>商品</label><div id="optCom" class="radio-group"></div></div>
+      <div><label>美元指數</label><div id="optFx" class="radio-group"></div></div>
+      <div><label>原物料</label><div id="optCom" class="radio-group"></div></div>
       <div><label>房地產</label><div id="optRe" class="radio-group"></div></div>
     </div>
 
